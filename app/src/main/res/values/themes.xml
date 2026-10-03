@@ -1,0 +1,18 @@
+<resources>
+    <style name="Theme.Statis" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary palette -->
+        <item name="colorPrimary">@color/card_surface</item>
+        <item name="colorPrimaryVariant">@color/bg_screen</item>
+        <item name="colorOnPrimary">@color/text_high_contrast</item>
+
+        <item name="colorSecondary">@color/card_border_selected</item>
+        <item name="colorSecondaryVariant">@color/card_border</item>
+        <item name="colorOnSecondary">@color/text_high_contrast</item>
+
+        <!-- Status bar and navigation bar -->
+        <item name="android:statusBarColor">@color/bg_screen</item>
+        <item name="android:navigationBarColor">@color/bg_screen</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/bg_screen</item>
+    </style>
+</resources>

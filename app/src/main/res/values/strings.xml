@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">Statis</string>
+    <string name="title_app">STATIS</string>
+    <string name="subtitle_app">Network Latency Stabilizer</string>
+
+    <!-- Operational State -->
+    <string name="status_label">Status</string>
+    <string name="status_inactive">Nonaktif</string>
+    <string name="status_active">Aktif</string>
+
+    <!-- Mode Selection -->
+    <string name="section_mode">Mode Jaringan</string>
+    <string name="mode_wifi">Wi-Fi</string>
+    <string name="mode_cellular">Data Seluler</string>
+
+    <!-- Metrics -->
+    <string name="section_metrics">Metrik Jaringan</string>
+    <string name="metric_ping_title">Ping Terkini</string>
+    <string name="metric_ping_default">-- ms</string>
+    <string name="metric_jitter_title">Jitter</string>
+    <string name="metric_jitter_default">-- ms</string>
+
+    <!-- Technical Parameters -->
+    <string name="section_parameters">Parameter Engine</string>
+    <string name="param_hardware_lock">Hardware Low-Latency Lock</string>
+    <string name="param_ac_vo">WMM AC_VO Priority</string>
+    <string name="param_anti_drx">Cellular Cadence Pacer</string>
+    <string name="state_off">OFF</string>
+    <string name="state_on">ON</string>
+
+    <!-- Actions -->
+    <string name="action_start">Mulai Stabilisasi</string>
+    <string name="action_stop">Hentikan</string>
+</resources>
