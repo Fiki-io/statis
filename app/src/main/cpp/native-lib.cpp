@@ -245,8 +245,8 @@ Java_com_statis_app_native_NativeBridge_startCellularCadence(
                 sizeof(target_addr)
             );
 
-            // 75ms heartbeat to prevent modem RRC C-DRX sleep
-            std::this_thread::sleep_for(std::chrono::milliseconds(75));
+            // 1500ms heartbeat keeps LTE/5G RRC Connected active without triggering firewall rate limits
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
         }
 
         close(cadence_sock);

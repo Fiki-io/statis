@@ -119,14 +119,15 @@ class EngineManager private constructor(private val context: Context) {
     private fun startMeasurementLoop() {
         monitorJob?.cancel()
         monitorJob = scope.launch {
-            // Highly reliable DNS endpoints (Google 8.8.8.8 is completely unblocked in Indonesia)
-            val hosts = listOf("8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222")
-            var hostIndex = 0
+            // Lock to local Indonesian Anycast edge nodes (Google Jakarta edge: 18-20ms)
+            // Avoid rotating to overseas servers (like OpenDNS/Quad9 which introduce 120ms-245ms transpacific latency)
+            val hosts = listOf("8.8.8.8", "8.8.4.4")
+            var consecutiveDrops = 0
+            var currentHost = "8.8.8.8"
             val port = 53
 
             while (isActive && _isRunning.value) {
                 try {
-                    val currentHost = hosts[hostIndex]
                     val metrics = NativeBridge.measureLatency(currentHost, port)
                     if (metrics.size >= 3) {
                         val rtt = metrics[0]
@@ -134,19 +135,29 @@ class EngineManager private constructor(private val context: Context) {
                         val drop = metrics[2] > 0.5
 
                         if (!drop && rtt > 0.0) {
-                            _pingMs.value = rtt
+                            consecutiveDrops = 0
+                            // Smooth moving average for stability
+                            if (_pingMs.value > 0.0) {
+                                _pingMs.value = (_pingMs.value * 0.7) + (rtt * 0.3)
+                            } else {
+                                _pingMs.value = rtt
+                            }
                             _jitterMs.value = jitter
                             _packetLoss.value = false
                         } else {
-                            // Rotate host on timeout/drop to circumvent ISP DNS block
-                            hostIndex = (hostIndex + 1) % hosts.size
+                            consecutiveDrops++
                             _packetLoss.value = true
+                            // Only switch between 8.8.8.8 and 8.8.4.4 if primary fails 3 times in a row
+                            if (consecutiveDrops >= 3) {
+                                currentHost = if (currentHost == "8.8.8.8") "8.8.4.4" else "8.8.8.8"
+                                consecutiveDrops = 0
+                            }
                         }
                     }
                 } catch (e: Exception) {
                     Log.e(tag, "Latency measurement error: ${e.message}")
                 }
-                delay(500)
+                delay(800)
             }
         }
     }
