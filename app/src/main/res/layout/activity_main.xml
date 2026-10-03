@@ -89,7 +89,7 @@
             <FrameLayout
                 android:id="@+id/btnModeWifi"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
+                android:layout_height="50dp"
                 android:layout_marginEnd="6dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_card_selected"
@@ -110,7 +110,7 @@
             <FrameLayout
                 android:id="@+id/btnModeCellular"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
+                android:layout_height="50dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_card"
@@ -128,7 +128,7 @@
             </FrameLayout>
         </LinearLayout>
 
-        <!-- Metrics Card -->
+        <!-- Dual-Hop Metrics Card -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -146,6 +146,7 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
+            <!-- Hop 1: Router Ping -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -155,28 +156,61 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/metric_ping_title"
+                    android:text="@string/metric_router_title"
                     android:textColor="@color/text_medium_contrast"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
-                    android:id="@+id/tvPingValue"
+                    android:id="@+id/tvRouterPingValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="@string/metric_ping_default"
+                    android:text="@string/metric_default"
                     android:textColor="@color/text_high_contrast"
-                    android:textSize="26sp"
+                    android:textSize="20sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
             <View
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="12dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
                 android:background="@color/card_border" />
 
+            <!-- Hop 2: Internet Ping -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/metric_internet_title"
+                    android:textColor="@color/text_medium_contrast"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tvInternetPingValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/metric_default"
+                    android:textColor="@color/text_high_contrast"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="@color/card_border" />
+
+            <!-- Jitter -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -188,16 +222,118 @@
                     android:layout_height="wrap_content"
                     android:text="@string/metric_jitter_title"
                     android:textColor="@color/text_medium_contrast"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/tvJitterValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="@string/metric_jitter_default"
+                    android:text="@string/metric_default"
                     android:textColor="@color/text_high_contrast"
-                    android:textSize="26sp"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Physical Radio Diagnostics Card -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:text="@string/section_radio"
+            android:textColor="@color/text_medium_contrast"
+            android:textSize="12sp"
+            android:letterSpacing="0.05" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/param_band"
+                    android:textColor="@color/text_high_contrast"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvBandValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--"
+                    android:textColor="@color/text_medium_contrast"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:background="@color/card_border" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/param_link_speed"
+                    android:textColor="@color/text_high_contrast"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvLinkSpeedValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- Mbps"
+                    android:textColor="@color/text_medium_contrast"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:background="@color/card_border" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/param_signal"
+                    android:textColor="@color/text_high_contrast"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvSignalValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- dBm"
+                    android:textColor="@color/text_medium_contrast"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
@@ -247,8 +383,8 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
                 android:background="@color/card_border" />
 
             <!-- Param 2: WMM AC_VO Priority -->
@@ -278,11 +414,11 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
                 android:background="@color/card_border" />
 
-            <!-- Param 3: Cellular Cadence Pacer -->
+            <!-- Param 3: PHY Burst Keeper -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -292,12 +428,12 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/param_anti_drx"
+                    android:text="@string/param_phy_keeper"
                     android:textColor="@color/text_high_contrast"
                     android:textSize="13sp" />
 
                 <TextView
-                    android:id="@+id/tvParamAntiDrx"
+                    android:id="@+id/tvParamPhyKeeper"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/state_off"
@@ -311,8 +447,8 @@
         <FrameLayout
             android:id="@+id/btnToggleEngine"
             android:layout_width="match_parent"
-            android:layout_height="54dp"
-            android:layout_marginTop="28dp"
+            android:layout_height="52dp"
+            android:layout_marginTop="24dp"
             android:layout_marginBottom="16dp"
             android:background="@drawable/bg_button"
             android:clickable="true"

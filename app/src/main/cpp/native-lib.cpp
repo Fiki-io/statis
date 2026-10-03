@@ -22,12 +22,14 @@ int g_socket_fd = -1;
 std::atomic<bool> g_cadence_running{false};
 std::thread g_cadence_thread;
 
+std::atomic<bool> g_wifi_keeper_running{false};
+std::thread g_wifi_keeper_thread;
+
 // Metrics tracking
 double g_last_rtt_ms = 0.0;
 double g_smoothed_jitter_ms = 0.0;
 uint16_t g_dns_tx_id = 0x1A2B;
 
-// High precision monotonic clock helper
 double get_monotonic_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
@@ -62,7 +64,7 @@ bool internal_init_socket() {
         LOGI("IP_TOS set to 0x%X (DSCP Expedited Forwarding)", tos);
     }
 
-    // 3. Set Socket Timeout to 700ms to avoid blocking
+    // 3. Set Socket Timeout to 700ms
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 700000;
@@ -124,12 +126,11 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     env->ReleaseStringUTFChars(host_jstr, host_cstr);
 
     // RFC 1035 Standard DNS Query packet for "google.com" (Type A, Class IN)
-    // Guarantees immediate response from any DNS server (8.8.8.8, 1.1.1.1, router DNS)
     g_dns_tx_id++;
     uint8_t dns_query[] = {
         static_cast<uint8_t>((g_dns_tx_id >> 8) & 0xFF),
         static_cast<uint8_t>(g_dns_tx_id & 0xFF),
-        0x01, 0x00, // Flags: Standard query, recursion desired
+        0x01, 0x00, // Flags: Standard query
         0x00, 0x01, // Questions: 1
         0x00, 0x00, // Answer RRs: 0
         0x00, 0x00, // Authority RRs: 0
@@ -153,7 +154,7 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     );
 
     if (sent < 0) {
-        metrics[2] = 1.0; // lost
+        metrics[2] = 1.0;
         env->SetDoubleArrayRegion(result, 0, 3, metrics);
         return result;
     }
@@ -173,28 +174,93 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
 
     double t_end = get_monotonic_time_ms();
 
-    if (received >= 12) { // Valid DNS header is at least 12 bytes
+    if (received >= 12) {
         double current_rtt = t_end - t_start;
         if (current_rtt < 1.0) current_rtt = 1.0;
 
-        // RFC 3550 style jitter calculation
         if (g_last_rtt_ms > 0.0) {
             double diff = std::abs(current_rtt - g_last_rtt_ms);
             g_smoothed_jitter_ms = (g_smoothed_jitter_ms * 0.85) + (diff * 0.15);
         } else {
-            g_smoothed_jitter_ms = 0.8;
+            g_smoothed_jitter_ms = 0.5;
         }
         g_last_rtt_ms = current_rtt;
 
         metrics[0] = current_rtt;
         metrics[1] = g_smoothed_jitter_ms;
-        metrics[2] = 0.0; // Success
+        metrics[2] = 0.0;
     } else {
-        metrics[2] = 1.0; // Timeout or drop
+        metrics[2] = 1.0;
     }
 
     env->SetDoubleArrayRegion(result, 0, 3, metrics);
     return result;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_statis_app_native_NativeBridge_startWifiPhyKeeper(
+    JNIEnv *env,
+    jobject /* this */,
+    jstring gateway_jstr
+) {
+    if (g_wifi_keeper_running.load()) return JNI_TRUE;
+
+    const char *gw_cstr = env->GetStringUTFChars(gateway_jstr, nullptr);
+    std::string gateway = gw_cstr ? gw_cstr : "192.168.1.1";
+    if (gw_cstr) env->ReleaseStringUTFChars(gateway_jstr, gw_cstr);
+
+    g_wifi_keeper_running.store(true);
+
+    g_wifi_keeper_thread = std::thread([gateway]() {
+        LOGI("Wi-Fi PHY Active Keeper started for gateway: %s", gateway.c_str());
+
+        int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sock < 0) {
+            g_wifi_keeper_running.store(false);
+            return;
+        }
+
+        int prio = 6;
+        setsockopt(sock, SOL_SOCKET, SO_PRIORITY, &prio, sizeof(prio));
+
+        struct sockaddr_in target_addr;
+        std::memset(&target_addr, 0, sizeof(target_addr));
+        target_addr.sin_family = AF_INET;
+        target_addr.sin_port = htons(53);
+        inet_pton(AF_INET, gateway.c_str(), &target_addr.sin_addr);
+
+        uint8_t ping_byte = 0xFF;
+
+        while (g_wifi_keeper_running.load()) {
+            sendto(
+                sock,
+                &ping_byte,
+                sizeof(ping_byte),
+                0,
+                reinterpret_cast<struct sockaddr *>(&target_addr),
+                sizeof(target_addr)
+            );
+
+            // Pulse every 1200ms to maintain active PHY connection without flooding
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+        }
+
+        close(sock);
+        LOGI("Wi-Fi PHY Active Keeper terminated");
+    });
+
+    return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_statis_app_native_NativeBridge_stopWifiPhyKeeper(JNIEnv * /* env */, jobject /* this */) {
+    if (g_wifi_keeper_running.load()) {
+        g_wifi_keeper_running.store(false);
+        if (g_wifi_keeper_thread.joinable()) {
+            g_wifi_keeper_thread.join();
+        }
+        LOGI("Wi-Fi PHY Active Keeper stopped");
+    }
 }
 
 JNIEXPORT jboolean JNICALL
@@ -269,6 +335,13 @@ Java_com_statis_app_native_NativeBridge_stopCellularCadence(JNIEnv * /* env */, 
 
 JNIEXPORT void JNICALL
 Java_com_statis_app_native_NativeBridge_releaseSocketEngine(JNIEnv * /* env */, jobject /* this */) {
+    if (g_wifi_keeper_running.load()) {
+        g_wifi_keeper_running.store(false);
+        if (g_wifi_keeper_thread.joinable()) {
+            g_wifi_keeper_thread.join();
+        }
+    }
+
     if (g_cadence_running.load()) {
         g_cadence_running.store(false);
         if (g_cadence_thread.joinable()) {

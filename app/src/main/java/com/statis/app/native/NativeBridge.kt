@@ -15,7 +15,17 @@ object NativeBridge {
     external fun measureLatency(host: String, port: Int): DoubleArray
 
     /**
-     * Starts native thread sending micro-cadence pulses (~75ms) to prevent RRC C-DRX sleep.
+     * Starts continuous low-latency Wi-Fi PHY active keeper to prevent WLAN MAC/PHY downclocking.
+     */
+    external fun startWifiPhyKeeper(gateway: String): Boolean
+
+    /**
+     * Stops Wi-Fi PHY active keeper thread.
+     */
+    external fun stopWifiPhyKeeper()
+
+    /**
+     * Starts native thread sending micro-cadence pulses (~1500ms) to prevent RRC C-DRX sleep.
      */
     external fun startCellularCadence(host: String, port: Int): Boolean
 

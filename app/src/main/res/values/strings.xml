@@ -14,17 +14,23 @@
     <string name="mode_cellular">Data Seluler</string>
 
     <!-- Metrics -->
-    <string name="section_metrics">Metrik Jaringan</string>
-    <string name="metric_ping_title">Ping Terkini</string>
-    <string name="metric_ping_default">-- ms</string>
+    <string name="section_metrics">Metrik Latensi (Dual-Hop)</string>
+    <string name="metric_router_title">Ping Router (Hop 1)</string>
+    <string name="metric_internet_title">Ping Internet</string>
     <string name="metric_jitter_title">Jitter</string>
-    <string name="metric_jitter_default">-- ms</string>
+    <string name="metric_default">-- ms</string>
+
+    <!-- Radio Physical Layer -->
+    <string name="section_radio">Status Fisik Antena</string>
+    <string name="param_band">Frekuensi Band</string>
+    <string name="param_link_speed">Link Speed</string>
+    <string name="param_signal">Kekuatan Sinyal</string>
 
     <!-- Technical Parameters -->
     <string name="section_parameters">Parameter Engine</string>
     <string name="param_hardware_lock">Hardware Low-Latency Lock</string>
     <string name="param_ac_vo">WMM AC_VO Priority</string>
-    <string name="param_anti_drx">Cellular Cadence Pacer</string>
+    <string name="param_phy_keeper">Active PHY Burst Keeper</string>
     <string name="state_off">OFF</string>
     <string name="state_on">ON</string>
 

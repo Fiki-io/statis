@@ -29,7 +29,6 @@ class MainActivity : AppCompatActivity() {
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
-            // Notification permission handled
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,7 +64,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             try {
                 val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 startActivity(intent)
@@ -126,6 +125,9 @@ class MainActivity : AppCompatActivity() {
 
                     binding.btnModeWifi.isClickable = false
                     binding.btnModeCellular.isClickable = false
+
+                    binding.tvParamPhyKeeper.text = getString(R.string.state_on)
+                    binding.tvParamPhyKeeper.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_active))
                 } else {
                     binding.tvEngineStatus.text = getString(R.string.status_inactive)
                     binding.tvEngineStatus.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_dim))
@@ -134,6 +136,14 @@ class MainActivity : AppCompatActivity() {
 
                     binding.btnModeWifi.isClickable = true
                     binding.btnModeCellular.isClickable = true
+
+                    binding.tvRouterPingValue.text = getString(R.string.metric_default)
+                    binding.tvInternetPingValue.text = getString(R.string.metric_default)
+                    binding.tvJitterValue.text = getString(R.string.metric_default)
+
+                    binding.tvParamPhyKeeper.text = getString(R.string.state_off)
+                    binding.tvParamPhyKeeper.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_dim))
+
                     updateModeUi(engineManager.networkMode.value)
                 }
             }
@@ -146,11 +156,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            engineManager.pingMs.collectLatest { ping ->
+            engineManager.gatewayPingMs.collectLatest { ping ->
                 if (ping > 0.0 && engineManager.isRunning.value) {
-                    binding.tvPingValue.text = String.format(Locale.US, "%.1f ms", ping)
-                } else if (!engineManager.isRunning.value) {
-                    binding.tvPingValue.text = getString(R.string.metric_ping_default)
+                    binding.tvRouterPingValue.text = String.format(Locale.US, "%.1f ms", ping)
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            engineManager.internetPingMs.collectLatest { ping ->
+                if (ping > 0.0 && engineManager.isRunning.value) {
+                    binding.tvInternetPingValue.text = String.format(Locale.US, "%.1f ms", ping)
                 }
             }
         }
@@ -159,9 +175,15 @@ class MainActivity : AppCompatActivity() {
             engineManager.jitterMs.collectLatest { jitter ->
                 if (jitter > 0.0 && engineManager.isRunning.value) {
                     binding.tvJitterValue.text = String.format(Locale.US, "%.1f ms", jitter)
-                } else if (!engineManager.isRunning.value) {
-                    binding.tvJitterValue.text = getString(R.string.metric_jitter_default)
                 }
+            }
+        }
+
+        lifecycleScope.launch {
+            engineManager.radioInfo.collectLatest { radio ->
+                binding.tvBandValue.text = radio.band
+                binding.tvLinkSpeedValue.text = radio.linkSpeed
+                binding.tvSignalValue.text = radio.signalStrength
             }
         }
 
@@ -185,19 +207,6 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.tvParamAcVo.text = getString(R.string.state_off)
                     binding.tvParamAcVo.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_dim))
-                }
-            }
-        }
-
-        lifecycleScope.launch {
-            engineManager.isRunning.collectLatest { running ->
-                val isCellular = engineManager.networkMode.value == NetworkMode.CELLULAR
-                if (running && isCellular) {
-                    binding.tvParamAntiDrx.text = getString(R.string.state_on)
-                    binding.tvParamAntiDrx.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.status_active))
-                } else {
-                    binding.tvParamAntiDrx.text = getString(R.string.state_off)
-                    binding.tvParamAntiDrx.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_dim))
                 }
             }
         }
