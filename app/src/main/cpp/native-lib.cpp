@@ -125,11 +125,18 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     }
     env->ReleaseStringUTFChars(host_jstr, host_cstr);
 
-    // RFC 1035 Standard DNS Query packet for "google.com" (Type A, Class IN)
+    // 1. Drain any stale unread packets in the UDP socket buffer
+    uint8_t drain_buf[512];
+    while (recv(g_socket_fd, drain_buf, sizeof(drain_buf), MSG_DONTWAIT) > 0) {
+        // Discard stale packets
+    }
+
+    // 2. Build RFC 1035 Standard DNS Query packet with unique Transaction ID
     g_dns_tx_id++;
+    uint16_t expected_tx_id = g_dns_tx_id;
     uint8_t dns_query[] = {
-        static_cast<uint8_t>((g_dns_tx_id >> 8) & 0xFF),
-        static_cast<uint8_t>(g_dns_tx_id & 0xFF),
+        static_cast<uint8_t>((expected_tx_id >> 8) & 0xFF),
+        static_cast<uint8_t>(expected_tx_id & 0xFF),
         0x01, 0x00, // Flags: Standard query
         0x00, 0x01, // Questions: 1
         0x00, 0x00, // Answer RRs: 0
@@ -163,18 +170,34 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
 
-    ssize_t received = recvfrom(
-        g_socket_fd,
-        recv_buffer,
-        sizeof(recv_buffer),
-        0,
-        reinterpret_cast<struct sockaddr *>(&from_addr),
-        &from_len
-    );
+    bool matched = false;
+    double t_end = t_start;
 
-    double t_end = get_monotonic_time_ms();
+    // Loop until we get the packet matching our specific transaction ID or timeout
+    while (get_monotonic_time_ms() - t_start < 700.0) {
+        ssize_t received = recvfrom(
+            g_socket_fd,
+            recv_buffer,
+            sizeof(recv_buffer),
+            0,
+            reinterpret_cast<struct sockaddr *>(&from_addr),
+            &from_len
+        );
 
-    if (received >= 12) {
+        if (received < 12) {
+            break; // Timeout or error
+        }
+
+        uint16_t resp_tx_id = (static_cast<uint16_t>(recv_buffer[0]) << 8) | recv_buffer[1];
+        if (resp_tx_id == expected_tx_id) {
+            t_end = get_monotonic_time_ms();
+            matched = true;
+            break;
+        }
+        // If TXID didn't match, it was an old packet, discard and continue listening
+    }
+
+    if (matched) {
         double current_rtt = t_end - t_start;
         if (current_rtt < 1.0) current_rtt = 1.0;
 

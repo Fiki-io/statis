@@ -129,10 +129,22 @@ class EngineManager private constructor(private val context: Context) {
         monitorJob?.cancel()
         monitorJob = scope.launch {
             var counter = 0
+            var bestInternetHost = "8.8.8.8"
+
+            // Smart benchmark on start: pick lowest RTT between 8.8.8.8 and 1.1.1.1
+            try {
+                val gMetrics = NativeBridge.measureLatency("8.8.8.8", 53)
+                val cMetrics = NativeBridge.measureLatency("1.1.1.1", 53)
+                if (cMetrics[2] < 0.5 && cMetrics[0] > 5.0) {
+                    if (gMetrics[2] > 0.5 || cMetrics[0] < gMetrics[0]) {
+                        bestInternetHost = "1.1.1.1"
+                    }
+                }
+            } catch (_: Exception) {}
 
             while (isActive && _isRunning.value) {
                 try {
-                    // Update physical radio info every 2 seconds
+                    // Update physical radio info every ~2.5 seconds
                     if (counter % 3 == 0) {
                         _radioInfo.value = networkDiagnostics.getRadioInfo()
                     }
@@ -143,7 +155,7 @@ class EngineManager private constructor(private val context: Context) {
                     // Probe Hop 1: Local Wi-Fi Router Gateway (Physical Airwave Latency)
                     if (_networkMode.value == NetworkMode.WIFI) {
                         val gwMetrics = NativeBridge.measureLatency(currentRadio.gatewayIp, 53)
-                        if (gwMetrics.size >= 3 && gwMetrics[2] < 0.5 && gwMetrics[0] > 0.0) {
+                        if (gwMetrics.size >= 3 && gwMetrics[2] < 0.5 && gwMetrics[0] >= 1.0) {
                             val gwRtt = gwMetrics[0]
                             if (_gatewayPingMs.value > 0.0) {
                                 _gatewayPingMs.value = (_gatewayPingMs.value * 0.7) + (gwRtt * 0.3)
@@ -153,9 +165,9 @@ class EngineManager private constructor(private val context: Context) {
                         }
                     }
 
-                    // Probe Hop 2: Internet Edge Server (8.8.8.8 Anycast)
-                    val netMetrics = NativeBridge.measureLatency("8.8.8.8", 53)
-                    if (netMetrics.size >= 3 && netMetrics[2] < 0.5 && netMetrics[0] > 0.0) {
+                    // Probe Hop 2: Internet Edge Server (Physical WAN Latency >= 5.0ms)
+                    val netMetrics = NativeBridge.measureLatency(bestInternetHost, 53)
+                    if (netMetrics.size >= 3 && netMetrics[2] < 0.5 && netMetrics[0] >= 5.0) {
                         val netRtt = netMetrics[0]
                         val netJitter = netMetrics[1]
 
@@ -170,7 +182,7 @@ class EngineManager private constructor(private val context: Context) {
                 } catch (e: Exception) {
                     Log.e(tag, "Measurement loop error: ${e.message}")
                 }
-                delay(700)
+                delay(800)
             }
         }
     }
