@@ -25,6 +25,7 @@ std::thread g_cadence_thread;
 // Metrics tracking
 double g_last_rtt_ms = 0.0;
 double g_smoothed_jitter_ms = 0.0;
+uint16_t g_dns_tx_id = 0x1A2B;
 
 // High precision monotonic clock helper
 double get_monotonic_time_ms() {
@@ -33,12 +34,7 @@ double get_monotonic_time_ms() {
     return (ts.tv_sec * 1000.0) + (ts.tv_nsec / 1000000.0);
 }
 
-} // namespace
-
-extern "C" {
-
-JNIEXPORT jboolean JNICALL
-Java_com_statis_app_native_NativeBridge_initSocketEngine(JNIEnv *env, jobject /* this */) {
+bool internal_init_socket() {
     if (g_socket_fd >= 0) {
         close(g_socket_fd);
         g_socket_fd = -1;
@@ -47,7 +43,7 @@ Java_com_statis_app_native_NativeBridge_initSocketEngine(JNIEnv *env, jobject /*
     g_socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (g_socket_fd < 0) {
         LOGE("Failed to create UDP socket: %s", strerror(errno));
-        return JNI_FALSE;
+        return false;
     }
 
     // 1. Set SO_PRIORITY to 6 (maps to WMM AC_VO - Voice/Gaming Queue in mac80211)
@@ -66,14 +62,23 @@ Java_com_statis_app_native_NativeBridge_initSocketEngine(JNIEnv *env, jobject /*
         LOGI("IP_TOS set to 0x%X (DSCP Expedited Forwarding)", tos);
     }
 
-    // 3. Set Socket Timeout to 600ms to avoid blocking
+    // 3. Set Socket Timeout to 700ms to avoid blocking
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 600000;
+    tv.tv_usec = 700000;
     setsockopt(g_socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(g_socket_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    return JNI_TRUE;
+    return true;
+}
+
+} // namespace
+
+extern "C" {
+
+JNIEXPORT jboolean JNICALL
+Java_com_statis_app_native_NativeBridge_initSocketEngine(JNIEnv * /* env */, jobject /* this */) {
+    return internal_init_socket() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jdoubleArray JNICALL
@@ -89,8 +94,10 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     jdouble metrics[3] = {-1.0, -1.0, 1.0}; // [RTT, Jitter, LostFlag]
 
     if (g_socket_fd < 0) {
-        env->SetDoubleArrayRegion(result, 0, 3, metrics);
-        return result;
+        if (!internal_init_socket()) {
+            env->SetDoubleArrayRegion(result, 0, 3, metrics);
+            return result;
+        }
     }
 
     const char *host_cstr = env->GetStringUTFChars(host_jstr, nullptr);
@@ -105,7 +112,6 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     target_addr.sin_port = htons(static_cast<uint16_t>(port));
 
     if (inet_pton(AF_INET, host_cstr, &target_addr.sin_addr) <= 0) {
-        // Resolve hostname if not an IP
         struct hostent *he = gethostbyname(host_cstr);
         if (he && he->h_addr_list && he->h_addr_list[0]) {
             std::memcpy(&target_addr.sin_addr, he->h_addr_list[0], sizeof(struct in_addr));
@@ -117,14 +123,30 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
     }
     env->ReleaseStringUTFChars(host_jstr, host_cstr);
 
-    // Micro probe payload: 8-byte timestamp
-    uint64_t probe_id = static_cast<uint64_t>(get_monotonic_time_ms());
+    // RFC 1035 Standard DNS Query packet for "google.com" (Type A, Class IN)
+    // Guarantees immediate response from any DNS server (8.8.8.8, 1.1.1.1, router DNS)
+    g_dns_tx_id++;
+    uint8_t dns_query[] = {
+        static_cast<uint8_t>((g_dns_tx_id >> 8) & 0xFF),
+        static_cast<uint8_t>(g_dns_tx_id & 0xFF),
+        0x01, 0x00, // Flags: Standard query, recursion desired
+        0x00, 0x01, // Questions: 1
+        0x00, 0x00, // Answer RRs: 0
+        0x00, 0x00, // Authority RRs: 0
+        0x00, 0x00, // Additional RRs: 0
+        0x06, 'g', 'o', 'o', 'g', 'l', 'e',
+        0x03, 'c', 'o', 'm',
+        0x00,       // End of domain
+        0x00, 0x01, // Type A
+        0x00, 0x01  // Class IN
+    };
+
     double t_start = get_monotonic_time_ms();
 
     ssize_t sent = sendto(
         g_socket_fd,
-        &probe_id,
-        sizeof(probe_id),
+        dns_query,
+        sizeof(dns_query),
         0,
         reinterpret_cast<struct sockaddr *>(&target_addr),
         sizeof(target_addr)
@@ -136,7 +158,7 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
         return result;
     }
 
-    uint8_t recv_buffer[128];
+    uint8_t recv_buffer[512];
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
 
@@ -151,16 +173,16 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
 
     double t_end = get_monotonic_time_ms();
 
-    if (received >= 0) {
+    if (received >= 12) { // Valid DNS header is at least 12 bytes
         double current_rtt = t_end - t_start;
-        if (current_rtt < 0.1) current_rtt = 0.1;
+        if (current_rtt < 1.0) current_rtt = 1.0;
 
-        // Calculate RFC 3550 style jitter
+        // RFC 3550 style jitter calculation
         if (g_last_rtt_ms > 0.0) {
             double diff = std::abs(current_rtt - g_last_rtt_ms);
             g_smoothed_jitter_ms = (g_smoothed_jitter_ms * 0.85) + (diff * 0.15);
         } else {
-            g_smoothed_jitter_ms = 0.5;
+            g_smoothed_jitter_ms = 0.8;
         }
         g_last_rtt_ms = current_rtt;
 
@@ -168,7 +190,7 @@ Java_com_statis_app_native_NativeBridge_measureLatency(
         metrics[1] = g_smoothed_jitter_ms;
         metrics[2] = 0.0; // Success
     } else {
-        metrics[2] = 1.0; // Timeout / packet drop
+        metrics[2] = 1.0; // Timeout or drop
     }
 
     env->SetDoubleArrayRegion(result, 0, 3, metrics);
@@ -187,7 +209,7 @@ Java_com_statis_app_native_NativeBridge_startCellularCadence(
     }
 
     const char *host_cstr = env->GetStringUTFChars(host_jstr, nullptr);
-    std::string host = host_cstr ? host_cstr : "1.1.1.1";
+    std::string host = host_cstr ? host_cstr : "8.8.8.8";
     if (host_cstr) env->ReleaseStringUTFChars(host_jstr, host_cstr);
 
     g_cadence_running.store(true);
@@ -202,7 +224,6 @@ Java_com_statis_app_native_NativeBridge_startCellularCadence(
             return;
         }
 
-        // Apply Priority 6 for Anti-DRX heartbeat
         int prio = 6;
         setsockopt(cadence_sock, SOL_SOCKET, SO_PRIORITY, &prio, sizeof(prio));
 
@@ -215,7 +236,6 @@ Java_com_statis_app_native_NativeBridge_startCellularCadence(
         uint8_t beat = 0xAA;
 
         while (g_cadence_running.load()) {
-            // Send micro heartbeat (1 byte)
             sendto(
                 cadence_sock,
                 &beat,
@@ -225,7 +245,7 @@ Java_com_statis_app_native_NativeBridge_startCellularCadence(
                 sizeof(target_addr)
             );
 
-            // Sleep 75ms (below the 100ms LTE/5G RRC InactivityTimer)
+            // 75ms heartbeat to prevent modem RRC C-DRX sleep
             std::this_thread::sleep_for(std::chrono::milliseconds(75));
         }
 
@@ -249,9 +269,11 @@ Java_com_statis_app_native_NativeBridge_stopCellularCadence(JNIEnv * /* env */, 
 
 JNIEXPORT void JNICALL
 Java_com_statis_app_native_NativeBridge_releaseSocketEngine(JNIEnv * /* env */, jobject /* this */) {
-    g_cadence_running.store(false);
-    if (g_cadence_thread.joinable()) {
-        g_cadence_thread.join();
+    if (g_cadence_running.load()) {
+        g_cadence_running.store(false);
+        if (g_cadence_thread.joinable()) {
+            g_cadence_thread.join();
+        }
     }
 
     if (g_socket_fd >= 0) {

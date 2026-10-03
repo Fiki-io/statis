@@ -52,10 +52,15 @@ class EngineManager private constructor(private val context: Context) {
         if (_isRunning.value) return
         Log.i(tag, "Starting Statis Latency Engine in mode: ${_networkMode.value.name}")
 
-        // 1. Acquire partial wake lock to prevent CPU throttling
-        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Statis:EngineWakeLock")?.apply {
-            acquire(12 * 60 * 60 * 1000L) // 12 hours max safety
+        // 1. Acquire partial wake lock to prevent CPU sleep
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Statis:EngineWakeLock")?.apply {
+                setReferenceCounted(false)
+                acquire(24 * 60 * 60 * 1000L) // 24 hours max
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "WakeLock error: ${e.message}")
         }
 
         // 2. Initialize Native Linux Socket Layer with WMM AC_VO (Priority 6) & DSCP EF
@@ -68,7 +73,7 @@ class EngineManager private constructor(private val context: Context) {
             _hardwareLockActive.value = locked
         } else {
             // Cellular mode: Start native Anti-DRX micro-cadence thread
-            NativeBridge.startCellularCadence("1.1.1.1", 53)
+            NativeBridge.startCellularCadence("8.8.8.8", 53)
             _hardwareLockActive.value = true
         }
 
@@ -94,8 +99,12 @@ class EngineManager private constructor(private val context: Context) {
 
         NativeBridge.releaseSocketEngine()
 
-        wakeLock?.let {
-            if (it.isHeld) it.release()
+        try {
+            wakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "WakeLock release error: ${e.message}")
         }
         wakeLock = null
 
@@ -110,13 +119,15 @@ class EngineManager private constructor(private val context: Context) {
     private fun startMeasurementLoop() {
         monitorJob?.cancel()
         monitorJob = scope.launch {
-            // Target DNS/Game gateway: Cloudflare (1.1.1.1) or Google (8.8.8.8) on DNS port 53 UDP
-            val host = "1.1.1.1"
+            // Highly reliable DNS endpoints (Google 8.8.8.8 is completely unblocked in Indonesia)
+            val hosts = listOf("8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222")
+            var hostIndex = 0
             val port = 53
 
             while (isActive && _isRunning.value) {
                 try {
-                    val metrics = NativeBridge.measureLatency(host, port)
+                    val currentHost = hosts[hostIndex]
+                    val metrics = NativeBridge.measureLatency(currentHost, port)
                     if (metrics.size >= 3) {
                         val rtt = metrics[0]
                         val jitter = metrics[1]
@@ -127,13 +138,15 @@ class EngineManager private constructor(private val context: Context) {
                             _jitterMs.value = jitter
                             _packetLoss.value = false
                         } else {
+                            // Rotate host on timeout/drop to circumvent ISP DNS block
+                            hostIndex = (hostIndex + 1) % hosts.size
                             _packetLoss.value = true
                         }
                     }
                 } catch (e: Exception) {
                     Log.e(tag, "Latency measurement error: ${e.message}")
                 }
-                delay(600)
+                delay(500)
             }
         }
     }

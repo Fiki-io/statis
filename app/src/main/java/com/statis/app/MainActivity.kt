@@ -1,9 +1,15 @@
 package com.statis.app
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -34,6 +40,7 @@ class MainActivity : AppCompatActivity() {
         engineManager = EngineManager.getInstance(applicationContext)
 
         checkPermissions()
+        checkBatteryOptimization()
         setupListeners()
         observeEngineState()
     }
@@ -44,6 +51,25 @@ class MainActivity : AppCompatActivity() {
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    @SuppressLint("BatteryLife")
+    private fun checkBatteryOptimization() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                startActivity(intent)
+            } catch (_: Exception) {
             }
         }
     }
@@ -67,6 +93,7 @@ class MainActivity : AppCompatActivity() {
             if (engineManager.isRunning.value) {
                 LatencyEngineService.stopService(this)
             } else {
+                checkBatteryOptimization()
                 LatencyEngineService.startService(this)
             }
         }
@@ -122,7 +149,7 @@ class MainActivity : AppCompatActivity() {
             engineManager.pingMs.collectLatest { ping ->
                 if (ping > 0.0 && engineManager.isRunning.value) {
                     binding.tvPingValue.text = String.format(Locale.US, "%.1f ms", ping)
-                } else {
+                } else if (!engineManager.isRunning.value) {
                     binding.tvPingValue.text = getString(R.string.metric_ping_default)
                 }
             }
@@ -132,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             engineManager.jitterMs.collectLatest { jitter ->
                 if (jitter > 0.0 && engineManager.isRunning.value) {
                     binding.tvJitterValue.text = String.format(Locale.US, "%.1f ms", jitter)
-                } else {
+                } else if (!engineManager.isRunning.value) {
                     binding.tvJitterValue.text = getString(R.string.metric_jitter_default)
                 }
             }
